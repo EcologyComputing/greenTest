@@ -1,4 +1,5 @@
 #!/usr/bin/env -S dotnet --
+#:project ./GreenTestCore/GreenTestCore.csproj
 // GreenTest for C# - Ecology Computing
 //
 // This is the required "notebook equivalent" for C#. Where python and JS
@@ -8,6 +9,14 @@
 // replacement: a "file-based app", an ordinary single C# file that runs
 // directly with `dotnet run greentest.cs` (or `./greentest.cs` on
 // Linux/macOS via the shebang line above), no .csproj required.
+//
+// The actual posts-generation logic (title/date extraction, sorting,
+// template insertion) lives in GreenTestCore/PostsGenerator.cs, not here -
+// it's referenced via the #:project directive above (a stable .NET 10
+// file-based-app feature, not the still-preview #:include). That's what
+// makes it possible to write real unit tests against it in
+// GreenTestCore.Tests/, with an ordinary `dotnet test`, without giving up
+// this file's own file-based, no-.csproj entry point.
 //
 // It walks through the same 7 steps as python/greentest.ipynb and
 // js/greentest.ipynb, top to bottom, and is meant to be read like a
@@ -31,7 +40,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
+using GreenTestCore;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -157,7 +166,7 @@ post, sort newest first, and insert the list into html_template.html in
 place of the <!-- posts--> marker.");
 
 string srcDir = Path.Combine(vanillaCompostFull, "src");
-string generated = GeneratePostsHtml(srcDir);
+string generated = PostsGenerator.GeneratePostsHtml(srcDir);
 
 // ---------------------------------------------------------------------
 // Step 5: serve the site locally
@@ -240,8 +249,11 @@ Computing methodology.");
 return 0;
 
 // =======================================================================
-// Local functions below - a direct C# port of vanilla-compost's
-// generate_posts.py / generate_posts.js, plus a small static file server.
+// Local functions below - the posts-generation logic (title/date
+// extraction, sorting, template insertion) now lives in
+// GreenTestCore/PostsGenerator.cs instead of here, so it can be unit
+// tested with a real xUnit project. What's left here is orchestration
+// (bash checks, notes) and the small static file server.
 // =======================================================================
 
 static int RunBash(string script)
@@ -259,124 +271,6 @@ static int RunBash(string script)
     using var proc = Process.Start(psi);
     proc!.WaitForExit();
     return proc.ExitCode;
-}
-
-static string GeneratePostsHtml(string srcDir)
-{
-    string templatePath = Path.Combine(srcDir, "html_template.html");
-    string template = File.ReadAllText(templatePath, Encoding.UTF8);
-
-    string postsDir = Path.Combine(srcDir, "posts");
-    var entries = new List<(string Name, string Title, string Date)>();
-
-    foreach (string filePath in Directory.GetFiles(postsDir, "*.md"))
-    {
-        string filename = Path.GetFileName(filePath);
-        if (filename.Contains("template") || filename.Contains("index")) continue;
-
-        string name = filename.Substring(0, filename.Length - 3);
-        entries.Add((name, ExtractTitle(filePath), ExtractDate(filePath)));
-    }
-
-    // Sort by parsed date, newest first - matching the Python/JS versions,
-    // which sort on a parsed key rather than comparing date strings as text.
-    entries = entries.OrderByDescending(e => DateSortKey(e.Date)).ToList();
-
-    var sb = new StringBuilder();
-    sb.Append("<p class=\"lead\">\n  <ul>\n");
-    foreach (var e in entries)
-    {
-        sb.Append($"    <li><a href=\"post.html?post={e.Name}\">{e.Title}</a> <small>({e.Date})</small></li>\n");
-    }
-    if (entries.Count == 0)
-    {
-        sb.Append("    <li>No posts available yet.</li>\n");
-    }
-    sb.Append("  </ul>\n</p>\n");
-
-    const string marker = "<!-- posts-->";
-    if (!template.Contains(marker))
-    {
-        throw new Exception("Could not find <!-- posts--> marker in html_template.html");
-    }
-    string newContent = template.Replace(marker, sb.ToString());
-
-    string outputPath = Path.Combine(srcDir, "posts.html");
-    File.WriteAllText(outputPath, newContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-    Console.WriteLine($"Generated posts.html with {entries.Count} posts using html_template.html");
-    return newContent;
-}
-
-static string ExtractTitle(string filePath)
-{
-    try
-    {
-        using var reader = new StreamReader(filePath, Encoding.UTF8);
-        string firstLine = (reader.ReadLine() ?? "").Trim();
-        var match = Regex.Match(firstLine, @"<!--\s*title:\s*(.+?)\s*-->");
-        if (match.Success) return match.Groups[1].Value;
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error reading title from {filePath}: {ex.Message}");
-    }
-
-    // Fall back to the filename: replace dashes with spaces and title-case
-    // it, matching Python's str.title() / JS's \b\w regex-replace fallback.
-    string basename = Path.GetFileNameWithoutExtension(filePath).Replace('-', ' ');
-    return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(basename.ToLowerInvariant());
-}
-
-static string ExtractDate(string filePath)
-{
-    string[] datePatterns =
-    {
-        @"\*([A-Za-z]+ \d{1,2}, \d{4})\*",   // *January 15, 2024*
-        @"(\d{4}-\d{2}-\d{2})",              // 2024-01-15
-        @"([A-Za-z]+ \d{1,2}, \d{4})",       // January 15, 2024
-    };
-
-    try
-    {
-        string content = File.ReadAllText(filePath, Encoding.UTF8);
-        foreach (string pattern in datePatterns)
-        {
-            var match = Regex.Match(content, pattern);
-            if (match.Success) return match.Groups[1].Value;
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error reading date from {filePath}: {ex.Message}");
-    }
-
-    try
-    {
-        DateTime mtime = File.GetLastWriteTime(filePath);
-        return mtime.ToString("MMMM dd, yyyy", CultureInfo.InvariantCulture);
-    }
-    catch
-    {
-        return "Unknown date";
-    }
-}
-
-static DateTime DateSortKey(string dateStr)
-{
-    // Parse against the two specific formats this file actually
-    // writes/reads, rather than the more permissive DateTime.Parse -
-    // which would also "succeed" on date-like strings that aren't really
-    // one of these two formats.
-    string[] formats = { "MMMM dd, yyyy", "MMMM d, yyyy", "yyyy-MM-dd" };
-    foreach (string fmt in formats)
-    {
-        if (DateTime.TryParseExact(dateStr, fmt, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt))
-        {
-            return dt;
-        }
-    }
-    return DateTime.MinValue; // unparseable - treat as oldest
 }
 
 static (HttpListener, Task) StartServer(string rootDir, int port, CancellationToken token)

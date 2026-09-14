@@ -133,6 +133,22 @@ if [ "$NEED_INSTALL" -eq 1 ]; then
     fi
 fi
 
+# On Alpine (musl, BusyBox), .NET needs a specific set of native libraries
+# that a bare Alpine image simply doesn't ship - this isn't an edge case to
+# reactively detect from a crash message the way libicu is on Debian
+# (Debian's base images already have libgcc/libstdc++; Alpine's don't have
+# any of this by default). Per Microsoft's own Alpine install docs, this
+# set is unconditionally required, so install it proactively rather than
+# waiting to see which specific missing library dotnet complains about.
+if command -v apk >/dev/null 2>&1; then
+    echo "Alpine detected - installing .NET's required native libraries via apk..."
+    if [ "$(id -u)" -eq 0 ]; then
+        apk add --no-cache icu-libs krb5-libs libgcc libintl libssl3 libstdc++ zlib
+    else
+        sudo apk add --no-cache icu-libs krb5-libs libgcc libintl libssl3 libstdc++ zlib
+    fi
+fi
+
 if ! which dotnet >/dev/null 2>&1; then
     echo "dotnet install finished but 'dotnet' still isn't on PATH in this shell."
     if [ "${IS_WINDOWS:-0}" -eq 1 ]; then
@@ -199,13 +215,68 @@ cd "$(dirname "$0")"
 # there - use 'dotnet run greentest.cs' instead, see README).
 chmod +x greentest.cs 2>/dev/null || true
 
+# 5. Set up Jupyter for greentest.ipynb - same venv-based approach as
+# python/js's bootstrap.sh (PEP 668 "externally-managed-environment" on
+# modern Debian/Ubuntu blocks a bare `pip install` outside a venv, so this
+# sidesteps that the same way they do, rather than requiring anyone change
+# how their system python is set up). The notebook itself doesn't run any
+# C#-specific Jupyter kernel - it uses the same plain Python kernel
+# python/js's notebooks use, and calls into greentest.cs via bash cells,
+# the same way js's notebook shells out to `node` rather than reimplementing
+# JS-specific logic in Python. See README.md for why.
+if ! which python3 >/dev/null 2>&1; then
+    echo "python3 is required to run the Jupyter notebook (greentest.ipynb). Install it first:"
+    echo "  macOS:   brew install python3"
+    if command -v apk >/dev/null 2>&1; then
+        echo "  Alpine:  apk add python3 py3-pip"
+    else
+        echo "  Linux:   sudo apt install python3 python3-pip python3-venv   (or your distro's equivalent)"
+    fi
+    echo "  Windows: https://www.python.org/downloads/"
+    exit 1
+fi
+
+if ! which python >/dev/null 2>&1; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$(which python3)" "$HOME/.local/bin/python"
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if [ ! -f ".venv/bin/activate" ] && [ ! -f ".venv/Scripts/activate" ]; then
+    echo "Creating a virtual environment for Jupyter at csharp/.venv..."
+    if ! python -m venv .venv; then
+        rm -rf .venv
+        echo "Could not create a virtual environment. On Debian/Ubuntu this usually means:"
+        echo "  sudo apt install python3-venv"
+        exit 1
+    fi
+fi
+
+if [ -f ".venv/bin/activate" ]; then
+    source ".venv/bin/activate"
+else
+    source ".venv/Scripts/activate"
+fi
+
+if ! python -m jupyter --version >/dev/null 2>&1; then
+    echo "Jupyter not found. Installing it now (inside .venv)..."
+    # --break-system-packages is safe here specifically: this pip install
+    # only ever runs inside the .venv we just created above, never against
+    # the real system Python, so there's nothing outside this disposable
+    # folder for it to break. It's needed because some distros (confirmed
+    # on Alpine) enforce PEP 668's "externally managed" check even inside
+    # an activated venv, not just against the system interpreter directly.
+    python -m pip install --quiet --break-system-packages notebook
+fi
+echo "Jupyter is ready."
+
 echo ""
 if [ "$NEED_INSTALL" -eq 1 ]; then
     echo "=========================================================================="
     echo "  dotnet was just installed - THIS TERMINAL doesn't see it yet."
     echo ""
     echo "  Open a NEW terminal window (or run: exec \$SHELL -l), THEN run:"
-    echo "    ./greentest.cs"
+    echo "    python -m jupyter notebook greentest.ipynb"
     echo ""
     echo "  This isn't a bug or something specific to this script - every install-"
     echo "  your-own-tool script (nvm, rustup, pyenv, etc.) has this same limit:"
@@ -215,6 +286,16 @@ if [ "$NEED_INSTALL" -eq 1 ]; then
     echo "=========================================================================="
 else
     echo "Bootstrap complete. Run the GreenTest with:"
-    echo "  ./greentest.cs             (Linux/macOS, uses the shebang line)"
-    echo "  dotnet run greentest.cs    (any OS, including Windows)"
+    echo "  python -m jupyter notebook greentest.ipynb   (the notebook - start here)"
+    if command -v busybox >/dev/null 2>&1; then
+        echo "  dotnet run greentest.cs                       (fast, unnarrated)"
+        echo ""
+        echo "Note: this looks like a BusyBox system (e.g. Alpine). ./greentest.cs won't"
+        echo "launch directly here - BusyBox's env doesn't support the -S flag its shebang"
+        echo "line needs. Use 'dotnet run greentest.cs' instead (same workaround Windows"
+        echo "already needs, for a different reason)."
+    else
+        echo "  ./greentest.cs                               (fast, unnarrated - Linux/macOS)"
+        echo "  dotnet run greentest.cs                       (fast, unnarrated - any OS)"
+    fi
 fi

@@ -9,9 +9,17 @@ GreenTests are extended READMEs: instead of just describing how to verify a lang
 Debian-based Linux only (Debian, Ubuntu, WSL2 running either, etc.) - see
 [`ECOLOGY.md`](./ECOLOGY.md#bootstrapping-a-new-machine).
 
-1. Make sure you have `git` (usually already there, or one command/prompt away).
-2. Clone whichever other repos you're about to work on as siblings of this one, like `vanilla-compost`.
-3. Pick the language you need below, `cd` into it, and run its bootstrap script.
+Install `git` and the GitHub CLI, log in to GitHub, and clone this repo:
+
+```bash
+sudo apt update && sudo apt install -y git gh && gh auth login && gh repo clone EcologyComputing/greenTest
+```
+
+Then:
+
+1. Clone whichever other repos you're about to work on as siblings of this one, like `vanilla-compost` (`gh repo clone EcologyComputing/vanilla-compost`).
+2. `cd greenTest/python` and run `./bootstrap.sh`, then its notebook - it's the prerequisite for every other language.
+3. Pick any other language you need below, `cd` into it, and run its bootstrap script.
 4. Read [`ECOLOGY.md`](./ECOLOGY.md) for the methodology this all sits inside - the guiding principles, the mapping approach, and the convention for working with this repo whether you're a person, an AI agent, or both.
 
 ## Starting a session
@@ -36,6 +44,8 @@ This works whether or not the tool auto-discovers `AGENTS.md` on its own since i
 Each one follows the same shape: `bootstrap.sh` gets the language's toolchain ready, then a notebook (or that language's closest equivalent) generates a tiny static site, serves it locally, and verifies the served output matches what was generated.
 
 The notebook is the required starting point for everyone - that's where a language explains itself as it goes. Python has nothing else, since its notebook is the one everyone is assumed to have been through first. Other languages may *also* ship a plain script alongside the notebook (e.g. `js/greentest.js`) as a smoke test - for a developer who's already done the notebook once and just wants a fast, scriptable way to confirm the environment still works before they start coding. That script is never the recommended first stop.
+
+Python's notebook is the prerequisite for the rest: it also covers one-time, per-machine setup (git identity, GitHub authentication) that other languages' notebooks don't repeat. Every other notebook follows python's flow from Step 1 on, and its own Step 0 only checks that language's toolchain. Each language's `bootstrap.sh` still installs python3 and Jupyter into a `.venv` inside its own folder rather than sharing one at the top level, so any language folder bootstraps, runs, and can be deleted on its own.
 
 ## Also here
 

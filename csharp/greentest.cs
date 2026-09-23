@@ -2,13 +2,12 @@
 #:project ./GreenTestCore/GreenTestCore.csproj
 // GreenTest for C# - Ecology Computing
 //
-// This is the required "notebook equivalent" for C#. Where python and JS
-// ship a Jupyter notebook, C#'s notebook tooling (.NET Interactive /
-// Polyglot Notebooks) was deprecated by Microsoft in 2026 - see README.md
-// for the full story and links. This file is Microsoft's own recommended
-// replacement: a "file-based app", an ordinary single C# file that runs
-// directly with `dotnet run greentest.cs` (or `./greentest.cs` on
-// Linux/macOS via the shebang line above), no .csproj required.
+// Start with greentest.ipynb - it runs this file from a bash cell. Once
+// you've been through the notebook, this also works on its own as a fast
+// smoke test. It's a "file-based app": an ordinary single C# file that runs
+// directly with `dotnet run greentest.cs` (or `./greentest.cs` via the
+// shebang line above), no .csproj required. See README.md for why this
+// isn't a C# Jupyter kernel.
 //
 // The actual posts-generation logic (title/date extraction, sorting,
 // template insertion) lives in GreenTestCore/PostsGenerator.cs, not here -

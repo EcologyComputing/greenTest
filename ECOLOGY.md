@@ -34,7 +34,8 @@ Windows outside WSL.
 1. Confirm `git` is available (usually preinstalled, or one prompt/package-manager command away).
 2. Clone this repo (`greenTest`) - it's the one that explains everything else.
 3. Clone whichever other repos the work in front of you needs, as siblings of this one.
-4. For each language/toolchain you need, `cd` into that language's folder here and run its `bootstrap.sh`, then its GreenTest notebook. A green result means that language works as expected on this machine, verified against vanilla compost. See `README.md` for which languages exist so far.
+4. Run `python/`'s `bootstrap.sh` and GreenTest notebook first - besides python, it sets up git identity and GitHub authentication for this machine.
+5. For each other language/toolchain you need, `cd` into that language's folder here and run its `bootstrap.sh`, then its GreenTest notebook. A green result means that language works as expected on this machine, verified against vanilla compost. See `README.md` for which languages exist so far.
 
 ## Working with agents
 
